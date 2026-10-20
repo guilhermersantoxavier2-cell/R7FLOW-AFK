@@ -85,7 +85,7 @@ end
 -- HOLDER
 local holder = Instance.new("Frame")
 holder.Name = "Holder"
-holder.Size = UDim2.new(0, 340, 0, 260)
+holder.Size = UDim2.new(0, 340, 0, 300)
 holder.Position = UDim2.new(0.5, -170, 0.1, 0)
 holder.BackgroundTransparency = 1
 holder.Active = true
@@ -166,7 +166,7 @@ subtitulo.Font = Enum.Font.Gotham
 subtitulo.TextSize = 8
 subtitulo.TextColor3 = TXT_DIM
 subtitulo.TextXAlignment = Enum.TextXAlignment.Left
-subtitulo.Text = "v1.1 | IB: @caligsc"
+subtitulo.Text = "v1.2 | IB: @caligsc"
 subtitulo.ZIndex = 4
 subtitulo.Parent = header
 
@@ -269,7 +269,7 @@ local tabConfig, tabConfigImg, tabConfigLbl = criarAbaTopo(
 
 -- CONTAINER STEAL
 local containerSteal = Instance.new("Frame")
-containerSteal.Size = UDim2.new(1, -16, 0, 156)
+containerSteal.Size = UDim2.new(1, -16, 0, 196)
 containerSteal.Position = UDim2.new(0, 8, 0, 74)
 containerSteal.BackgroundTransparency = 1
 containerSteal.ZIndex = 3
@@ -291,7 +291,7 @@ end
 
 local containerConfig = Instance.new("Frame")
 containerConfig.Name = "ContainerConfig"
-containerConfig.Size = UDim2.new(1, -16, 0, 156)
+containerConfig.Size = UDim2.new(1, -16, 0, 196)
 containerConfig.Position = UDim2.new(0, 8, 0, 74)
 containerConfig.BackgroundTransparency = 1
 containerConfig.ZIndex = 3
@@ -475,6 +475,8 @@ local contStealPrice, getStealPrice, setStealPrice, onStealPriceChange =
     criarToggleSwitch(containerConfig, "Auto Steal Price", 82)
 local contTreadmill, getTreadmill, setTreadmill, onTreadmillChange =
     criarToggleSwitch(containerConfig, "Auto Treadmill", 116)
+local contLateral, getLateral, setLateral, onLateralChange =
+    criarToggleSwitch(containerConfig, "Movimento Lateral", 150)
 
 atualizarValor()
 
@@ -559,7 +561,7 @@ end)
 -- MINIMIZAR
 local corpoPainel = { faixaTopo, tabBar, containerSteal, containerConfig, faixaBase, rodape }
 local minimizado = false
-local tamanhoNormal = UDim2.new(0, 340, 0, 260)
+local tamanhoNormal = UDim2.new(0, 340, 0, 300)
 local tamanhoMin    = UDim2.new(0, 200, 0, 36)
 
 btnMin.MouseButton1Click:Connect(function()
@@ -599,6 +601,15 @@ local function iniciarSistemaSteal()
     local S = {
         Carrying = false, Uid = nil, Delivered = 0, Busy = false, Cancel = false,
         Paused = false, Mult = 1, PulledAt = 0, HeldSeen = 0, GuessedDrop = false,
+    }
+
+    -- ═══════════ LATERAL MOVEMENT STATE ═══════════
+    local LateralState = {
+        Active = false,
+        Accumulated = 0,
+        Interval = 300,     -- 5 minutos
+        Duration = 10,      -- 10s de movimento
+        Distance = 5,       -- 5 studs pra cada lado
     }
 
     local statusSteal = nil
@@ -807,6 +818,132 @@ local function iniciarSistemaSteal()
             end)
         end
     end
+
+    -- ═══════════ LATERAL MOVEMENT ═══════════
+    local function obterControlesLateral()
+        local playerScripts = LocalPlayer:FindFirstChild("PlayerScripts")
+        if not playerScripts then return nil end
+        local pm = playerScripts:FindFirstChild("PlayerModule")
+        if not pm then return nil end
+        local ok, modulo = pcall(require, pm)
+        if not ok or not modulo.GetControls then return nil end
+        return modulo:GetControls()
+    end
+
+    local function moverParaLateral(humanoid, rootPart, destino, timeout, shouldCancel)
+        humanoid:MoveTo(destino)
+        local t = os.clock()
+        while os.clock() - t < timeout do
+            if shouldCancel and shouldCancel() then return false end
+            if not rootPart.Parent or humanoid.Health <= 0 then return false end
+            local a = Vector3.new(rootPart.Position.X, 0, rootPart.Position.Z)
+            local b = Vector3.new(destino.X, 0, destino.Z)
+            if (a - b).Magnitude < 1.2 then return true end
+            task.wait(0.05)
+        end
+        return false
+    end
+
+    local function executarMovimentoLateral(shouldCancel)
+        local character = LocalPlayer.Character
+        if not character then return end
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        if not humanoid or not rootPart or humanoid.Health <= 0 then return end
+
+        local controles = obterControlesLateral()
+        if controles then controles:Disable() end
+
+        local origem = rootPart.Position
+        local look = rootPart.CFrame.LookVector
+        local direita = Vector3.new(-look.Z, 0, look.X).Unit
+
+        local destinoIda = origem + direita * LateralState.Distance
+        local destinoVolta = origem
+
+        local inicio = os.clock()
+        local indo = true
+
+        pcall(function()
+            while (os.clock() - inicio) < LateralState.Duration do
+                if shouldCancel and shouldCancel() then break end
+                local restante = LateralState.Duration - (os.clock() - inicio)
+                local limite = math.min(5, restante + 0.5)
+
+                if indo then
+                    moverParaLateral(humanoid, rootPart, destinoIda, limite, shouldCancel)
+                else
+                    moverParaLateral(humanoid, rootPart, destinoVolta, limite, shouldCancel)
+                end
+                indo = not indo
+                task.wait(0.1)
+            end
+        end)
+
+        humanoid:MoveTo(rootPart.Position)
+        humanoid:Move(Vector3.zero, false)
+
+        if controles then controles:Enable() end
+    end
+
+    local function lateralJumpAndMove()
+        if LateralState.Active then return end
+        LateralState.Active = true
+
+        local function shouldCancel()
+            return not (getLateral and getLateral()) or not (getTreadmill and getTreadmill())
+        end
+
+        pcall(function()
+            -- 1. Pula pra sair do treadmill
+            local ch = LocalPlayer.Character
+            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+            local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+            if hum and hrp then
+                local look = hrp.CFrame.LookVector
+                pcall(function() hum.Jump = true end)
+                pcall(function()
+                    hrp.AssemblyLinearVelocity = Vector3.new(look.X * 50, 100, look.Z * 50)
+                end)
+            end
+
+            -- 2. Espera aterrissar
+            task.wait(1.2)
+            if shouldCancel() then return end
+
+            -- 3. Movimento lateral
+            executarMovimentoLateral(shouldCancel)
+
+            -- 4. Pequena pausa antes de voltar
+            task.wait(0.3)
+        end)
+
+        -- 5. Volta pro treadmill (sempre)
+        pcall(function() tmTeleportTo(3) end)
+
+        LateralState.Active = false
+        print("[Painel] Movimento finalizado após " .. LateralState.Duration .. " segundos.")
+    end
+
+    -- ═══════════ LATERAL TIMER (5min) ═══════════
+    task.spawn(function()
+        while gui.Parent do
+            task.wait(1)
+
+            local lateralOn = getLateral and getLateral() or false
+            local treadmillOn = getTreadmill and getTreadmill() or false
+
+            if not lateralOn or not treadmillOn then
+                LateralState.Accumulated = 0
+            elseif not S.Busy and not S.Cancel and tmIsOnTreadmill() then
+                LateralState.Accumulated += 1
+                if LateralState.Accumulated >= LateralState.Interval then
+                    LateralState.Accumulated = 0
+                    lateralJumpAndMove()
+                end
+            end
+        end
+    end)
 
     -- SHIELD
     local shield = { Active = false, Original = nil, Clone = nil, Links = {}, HB = nil, Added = nil }
@@ -1328,7 +1465,7 @@ local function iniciarSistemaSteal()
         while S.Paused and not S.Cancel do RunService.Heartbeat:Wait() end
     end
 
-    -- ═══════════ WALL AVOIDANCE ═══════════
+    -- WALL AVOIDANCE
     local WALL_RAY_LEN = 9
     local WALL_PARAMS = RaycastParams.new()
     WALL_PARAMS.FilterType = Enum.RaycastFilterType.Exclude
@@ -1859,6 +1996,12 @@ local function iniciarSistemaSteal()
             end
             if not Auto.Active then break end
 
+            -- Aguarda movimento lateral terminar antes de roubar
+            while LateralState.Active and Auto.Active do
+                task.wait(0.2)
+            end
+            if not Auto.Active then break end
+
             if tmIsOnTreadmill() then
                 local eggPos = eggPosition(uid)
                 if eggPos then
@@ -1970,7 +2113,7 @@ local function iniciarSistemaSteal()
     statusSteal = function(msg) lblStatus.Text = tostring(msg) end
 
     local scrollEggs = Instance.new("ScrollingFrame")
-    scrollEggs.Size = UDim2.new(1, -4, 0, 88)
+    scrollEggs.Size = UDim2.new(1, -4, 0, 128)
     scrollEggs.Position = UDim2.new(0, 2, 0, 38)
     scrollEggs.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
     scrollEggs.BorderSizePixel = 0
@@ -2159,6 +2302,17 @@ local function iniciarSistemaSteal()
                 end
             else
                 Toast("Auto Treadmill OFF", AMARELO)
+            end
+        end)
+    end
+
+    if onLateralChange then
+        onLateralChange(function(ativo)
+            if ativo then
+                Toast("Movimento Lateral ON", VERDE)
+            else
+                Toast("Movimento Lateral OFF", AMARELO)
+                LateralState.Accumulated = 0
             end
         end)
     end
