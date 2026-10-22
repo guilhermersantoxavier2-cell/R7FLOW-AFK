@@ -166,7 +166,7 @@ subtitulo.Font = Enum.Font.Gotham
 subtitulo.TextSize = 8
 subtitulo.TextColor3 = TXT_DIM
 subtitulo.TextXAlignment = Enum.TextXAlignment.Left
-subtitulo.Text = "v1.3 | IB: @caligsc"
+subtitulo.Text = "v1.3 | IB: R7FLOW | SCRIPTS"
 subtitulo.ZIndex = 4
 subtitulo.Parent = header
 
