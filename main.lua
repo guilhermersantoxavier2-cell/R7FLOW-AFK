@@ -166,7 +166,7 @@ subtitulo.Font = Enum.Font.Gotham
 subtitulo.TextSize = 8
 subtitulo.TextColor3 = TXT_DIM
 subtitulo.TextXAlignment = Enum.TextXAlignment.Left
-subtitulo.Text = "v1.2 | IB: @caligsc"
+subtitulo.Text = "v1.3 | IB: @caligsc"
 subtitulo.ZIndex = 4
 subtitulo.Parent = header
 
@@ -895,7 +895,6 @@ local function iniciarSistemaSteal()
         end
 
         pcall(function()
-            -- 1. Pula pra sair do treadmill
             local ch = LocalPlayer.Character
             local hum = ch and ch:FindFirstChildOfClass("Humanoid")
             local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
@@ -907,18 +906,14 @@ local function iniciarSistemaSteal()
                 end)
             end
 
-            -- 2. Espera aterrissar
             task.wait(1.2)
             if shouldCancel() then return end
 
-            -- 3. Movimento lateral
             executarMovimentoLateral(shouldCancel)
 
-            -- 4. Pequena pausa antes de voltar
             task.wait(0.3)
         end)
 
-        -- 5. Volta pro treadmill (sempre)
         pcall(function() tmTeleportTo(3) end)
 
         LateralState.Active = false
@@ -2000,6 +1995,10 @@ local function iniciarSistemaSteal()
             while LateralState.Active and Auto.Active do
                 task.wait(0.2)
             end
+            if not Auto.Active then break end
+
+            -- ⏱️ Espera 2 segundos antes de ir atrás do pet
+            task.wait(2)
             if not Auto.Active then break end
 
             if tmIsOnTreadmill() then
